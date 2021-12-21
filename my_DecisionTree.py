@@ -43,7 +43,7 @@ class DecisionTree:
         :param splitter best - полный перебор, повышает качество, но просели по времени.
         Все кроме best это варинт с выборочным перебором, что уменьшит время, но мы можем просесть по качеству немного.
         :param type_sample - отвечает за длину случайного подмножества из которого будет выбираться наилучший признак.
-        len_sample принимает 2 варианта max и random
+        type_sample принимает 2 варианта max и random
         """
         self.max_depth = max_depth
         self.min_samples = min_samples
@@ -148,7 +148,7 @@ class DecisionTree:
         n_feats: кол-во столбцов
         :return: наилучшее значение фичи(порог для разделения), номер наилучшей фичи
 
-        len(vertex[0]) - 1  так как таргет кранится в конце
+        len(vertex[0]) - 1  так как таргет хранится в конце
         """
         n_feats = len(vertex[0]) - 1
         best_gini = float('inf')
