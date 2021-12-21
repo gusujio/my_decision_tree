@@ -7,6 +7,7 @@ from sklearn.metrics import accuracy_score
 import time
 import collections
 
+
 class Vertex:
     """класс Вершина
     Так как решающие дерево состоит из вершин, то выделил под это отдельный класс
@@ -35,18 +36,56 @@ class Vertex:
 class DecisionTree:
     index = 0
 
-    def __init__(self, max_depth=None, min_samples=1, splitter='best'):
+    def __init__(self, max_depth=None, min_samples=1, splitter='best', type_sample='max'):
         """
         :param max_depth: максимальная глубина дерева
         :param min_samples: ограничение на минималькое ко-во элементов в листе
         :param splitter best - полный перебор, повышает качество, но просели по времени.
-        Все кроме best это варинт с выборочным перебором, что уменьшит время, но мы можем просесть по качеству немного
+        Все кроме best это варинт с выборочным перебором, что уменьшит время, но мы можем просесть по качеству немного.
+        :param type_sample - отвечает за длину случайного подмножества из которого будет выбираться наилучший признак.
+        len_sample принимает 2 варианта max и random
         """
         self.max_depth = max_depth
         self.min_samples = min_samples
         self.columns = None
         self.head_tree = None
-        self.splitter = splitter
+        if splitter == 'best':
+            self.splitter = self.splitter_best
+        else:
+            self.splitter = self.splitter_fast
+        if type_sample == 'max':
+            self.type_sample = self.sample_max
+        elif type_sample == 'random':
+            self.type_sample = self.sample_random
+        else:
+            raise ValueError('неизвестное значение для type_sample')
+
+    def __repr__(self):
+        return f"Tree deep:{self.max_depth}"
+
+    @staticmethod
+    def splitter_best(vertex, feat):
+        return set(vertex[:, feat])
+
+    @staticmethod
+    def splitter_fast(vertex, feat):
+        col = vertex[:, feat]
+        std_ = col.std()
+        std_ = 1 if std_ == 0 else std_
+        step = int(len(col) / std_)
+        step = 1 if step == 0 else step
+        return np.unique(col)[::step]
+
+    @staticmethod
+    def sample_max(n_feats):
+        return range(n_feats)
+
+    @staticmethod
+    def sample_random(n_feats):
+        q = int(n_feats ** 0.5)
+        arr = np.arange(n_feats)
+        np.random.shuffle(arr)
+        return arr[:q]
 
     @staticmethod
     def gini(rows: list) -> float:
@@ -108,21 +147,15 @@ class DecisionTree:
         :param vertex: вершина, в которой будем искать значения для разбеения
         n_feats: кол-во столбцов
         :return: наилучшее значение фичи(порог для разделения), номер наилучшей фичи
+
+        len(vertex[0]) - 1  так как таргет кранится в конце
         """
         n_feats = len(vertex[0]) - 1
         best_gini = float('inf')
         best_threshold = best_index = None
-        for feat in range(n_feats):
+        for feat in self.type_sample(n_feats):
             index = feat
-            if self.splitter == 'best':
-                values = set(vertex[:, feat])
-            else:
-                col = vertex[:, feat]
-                step = int(len(col) / col.std())
-                if step == 0:
-                    step = 1
-                values = np.unique(col)[::step]
-
+            values = self.splitter(vertex, feat)
             for threshold in values:
                 true_rows, false_rows = self.partition(vertex, index, threshold)
                 if len(true_rows) == 0 or len(false_rows) == 0:
@@ -158,7 +191,8 @@ class DecisionTree:
             tree = my_data
         else:
             raise ValueError("не тот формат данных на входе")
-        if len(tree.my_data) > self.min_samples and self.head_tree.depth() < self.max_depth:
+        if len(tree.my_data) > self.min_samples and self.head_tree.depth() < self.max_depth \
+        and len(tree.my_data) >= 2 and len(set(tree.my_data[:, -1])) > 1:
             self.create_leaf(tree)
             self.fit(tree.left)
             self.fit(tree.right)
@@ -232,13 +266,16 @@ class DecisionTree:
 if __name__ == '__main__':
     """  к чему мы пришли? 
     Деррево работает и работает коректно.
-    основыне различия с sklern:
+    основыне различия с sklern:p
     1) параметр sk_tree.max_depth = my_tree.max_depth + 1
     те у меня параметр max_depth должен быть на 1 больше аналогичного значения max_depth в sk_tree.
     Мне кажется, что мой вариант более правильный, так что исправлять его не буду. 
     2) Раздиления просиходят различным способом, что означает splitter='best' я не нашел ни в фоициальной документации,
     ни на просторах инета. Но надо признать, что мой метод (полного перебра) работает лучше по качеству. 
-    Но могу предположить, что дольше по времени 
+    Но могу предположить, что дольше по времени.
+    поискав немного еще нашел что sklern ссылаются на алгоритм на основе Фишера-Йейтса, это все что по сути говорилось,
+    а этот алгос связан просто с случайной перестановкой, те не совсем то, что мне бы хотелось, скорее всего сильный 
+    прирост по времени связан с использованием Cython 
     """
 
     np.random.RandomState(12)
@@ -249,7 +286,7 @@ if __name__ == '__main__':
     #
     data.columns = breast_cancer.feature_names
 
-    train_data, test_data, train_target, test_target = train_test_split(data, target, test_size=0.9, random_state=21)
+    train_data, test_data, train_target, test_target = train_test_split(data, target, test_size=0.2, random_state=21)
 
     start_time = time.time()
     sk_tree = DecisionTreeClassifier(max_depth=1, random_state=21)
@@ -266,4 +303,3 @@ if __name__ == '__main__':
 
     print(accuracy_score(test_target, sk_tree.predict(test_data)))
     print(accuracy_score(test_target, my_tree.predict(test_data)))
-
